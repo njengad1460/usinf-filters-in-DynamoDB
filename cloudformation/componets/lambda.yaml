@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Lambda stack for processing DynamoDB stream events
+
+Parameters:
+  EnvType:
+    Type: String
+    AllowedValues: [dev, prod]
+
+  IAMRoleArn:
+    Type: String
+    Description: ARN of the Lambda execution role
+
+  DynamoStreamArn:
+    Type: String
+    Description: ARN of the DynamoDB Stream
+
+  SNSTopicArn:
+    Type: String
+    Description: ARN of the SNS topic for notifications
+
+  TemplateBucket:
+    Type: String
+    Description: S3 bucket containing Lambda artifact
+
+  LambdaZipKey:
+    Type: String
+    Default: "artifacts/lambda.zip"
+    Description: S3 key for Lambda zip file
+
+
+Resources:
+
+  ProcessEventsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "EventProcessor-${EnvType}"
+      Runtime: python3.12
+      Handler: app.handler
+      Role: !Ref IAMRoleArn
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 5
+      Code:
+        S3Bucket: !Ref TemplateBucket
+        S3Key: !Ref LambdaZipKey
+      Environment:
+        Variables:
+          ENV: !Ref EnvType
+          SNS_TOPIC_ARN: !Ref SNSTopicArn
+
+
+  StreamTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    DependsOn: ProcessEventsFunction
+    Properties:
+      EventSourceArn: !Ref DynamoStreamArn
+      FunctionName: !GetAtt ProcessEventsFunction.Arn
+      StartingPosition: LATEST
+      BatchSize: 5
+      MaximumRetryAttempts: 3
+      BisectBatchOnFunctionError: True
+      Enabled: True
+
+      # 🔥 Core Filtering Logic
+      FilterCriteria:
+        Filters:
+          - Pattern: >
+              {
+                "eventName": ["INSERT"],
+                "dynamodb": {
+                  "NewImage": {
+                    "Status": {
+                      "S": ["FAILED"]
+                    }
+                  }
+                }
+              }
+
+
+Outputs:
+  LambdaArn:
+    Description: ARN of the processing Lambda function
+    Value: !GetAtt ProcessEventsFunction.Arn

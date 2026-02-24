@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: DynamoDB table with stream enabled
+
+Parameters:
+  EnvType:
+    Type: String
+    AllowedValues: [dev, prod]
+
+Resources:
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "EventsTable-${EnvType}"
+
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+      DeletionProtectionEnabled: true
+
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvType
+        - Key: Project
+          Value: DynamoDB-Stream-Processor
+
+Outputs:
+  TableName:
+    Description: Name of the DynamoDB Table
+    Value: !Ref EventsTable
+
+  StreamArn:
+    Description: The ARN of the DynamoDB Stream
+    Value: !GetAtt EventsTable.StreamArnAWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  EnvType:
+    Type: String
+    AllowedValues: [dev, prod]
+
+Resources:
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "EventsTable-${EnvType}"
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+Outputs:
+  TableName:
+    Description: Name of the DynamoDB Table
+    Value: !Ref EventsTable
+  StreamArn:
+    Description: The ARN of the DynamoDB Stream
+    Value: !GetAtt EventsTable.StreamArn

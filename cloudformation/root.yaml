@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Root stack for DynamoDB Stream Processing Project
+
+Parameters:
+  EnvType:
+    Type: String
+    AllowedValues: [dev, prod]
+
+  TemplateBucket:
+    Type: String
+    Description: S3 bucket where nested templates and Lambda artifacts are stored
+
+  LambdaZipKey:
+    Type: String
+    Default: artifacts/lambda.zip
+    Description: S3 key for Lambda deployment package
+
+
+Resources:
+
+  # 1️⃣ IAM Stack
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucket}.s3.amazonaws.com/cloudformation/components/iam.yaml"
+      Parameters:
+        EnvType: !Ref EnvType
+
+
+  # 2️⃣ DynamoDB Stack
+  DynamoDBStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucket}.s3.amazonaws.com/cloudformation/components/dynamodb.yaml"
+      Parameters:
+        EnvType: !Ref EnvType
+
+
+  # 3️⃣ SNS Stack
+  SNSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucket}.s3.amazonaws.com/cloudformation/components/sns.yaml"
+      Parameters:
+        EnvType: !Ref EnvType
+
+
+  # 4️⃣ Lambda Stack
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - IAMStack
+      - DynamoDBStack
+      - SNSStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucket}.s3.amazonaws.com/cloudformation/components/lambda.yaml"
+      Parameters:
+        EnvType: !Ref EnvType
+        IAMRoleArn: !GetAtt IAMStack.Outputs.LambdaRoleArn
+        DynamoStreamArn: !GetAtt DynamoDBStack.Outputs.StreamArn
+        SNSTopicArn: !GetAtt SNSStack.Outputs.TopicArn
+        TemplateBucket: !Ref TemplateBucket
+        LambdaZipKey: !Ref LambdaZipKey
+
+
+Outputs:
+  LambdaArn:
+    Description: ARN of deployed Lambda function
+    Value: !GetAtt LambdaStack.Outputs.LambdaArn
+
+  TableName:
+    Description: DynamoDB Table Name
+    Value: !GetAtt DynamoDBStack.Outputs.TableName

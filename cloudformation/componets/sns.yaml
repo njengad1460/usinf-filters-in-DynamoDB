@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: SNS Topic for DynamoDB Failed Event Notifications
+
+Parameters:
+  EnvType:
+    Type: String
+    AllowedValues: [dev, prod]
+
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: Optional email to subscribe to SNS topic
+
+
+Resources:
+
+  EventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "FailedEventsTopic-${EnvType}"
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvType
+        - Key: Project
+          Value: DynamoDB-Stream-Processor
+
+
+  # Optional Email Subscription (Only created if email is provided)
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: CreateEmailSubscription
+    Properties:
+      TopicArn: !Ref EventsTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+
+Conditions:
+  CreateEmailSubscription: !Not [!Equals [!Ref NotificationEmail, ""]]
+
+
+Outputs:
+  TopicArn:
+    Description: ARN of the SNS Topic
+    Value: !Ref EventsTopic
