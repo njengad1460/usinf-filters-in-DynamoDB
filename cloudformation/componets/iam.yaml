@@ -1,0 +1,89 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  EnvType:
+    Type: String
+    AllowedValues: [dev, prod]
+
+Resources:
+  # 1. The Role your Lambda will use
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "lambda-dynamo-processor-role-${EnvType}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [lambda.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBStreamReadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+  
+                Resource: "*" # In production, we'll narrow this to the Table ARN
+  
+  # github will use this OPEN id to connect to AWS
+  # 1. The OIDC Provider (One per AWS Account)
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # These thumbprints are the standard for GitHub as of 2026
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  # 2. The Role GitHub Actions will assume
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "github-oidc-deploy-role-${EnvType}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRoleWithWebIdentity
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Condition:
+              StringLike:
+                # CRITICAL: This restricts the role to ONLY your repo and specific branches
+                token.actions.githubusercontent.com:sub: "repo:njengad1460/usinf-filters-in-DynamoDB:*"
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+      # Give this role permission to manage CloudFormation and the resources in your project
+      Policies:
+        - PolicyName: GitHubCloudFormationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - s3:*
+                  - iam:*
+                  - lambda:*
+                  - dynamodb:*
+                Resource: "*"
+
+Outputs:
+  GitHubRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  LambdaRoleArn:
+    Description: ARN of the Lambda Execution Role
+    Value: !GetAtt LambdaExecutionRole.Arn
+            
